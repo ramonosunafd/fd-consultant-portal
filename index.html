@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Fast Dolphin — Invoice Submission</title>
+<script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;min-height:100vh;color:#1e293b}
+.shell{max-width:620px;margin:0 auto;padding:24px 16px 60px}
+.header{display:flex;align-items:center;gap:14px;padding:20px 0 28px}
+.logo-wrap{display:flex;align-items:center;gap:14px}
+.divider{width:1px;height:36px;background:#e2e8f0}
+.brand{font-weight:700;font-size:15px;color:#1e293b;line-height:1.3}
+.brand-sub{font-size:11px;color:#94a3b8;font-weight:500}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;margin-bottom:16px}
+.card-title{font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;font-weight:500;color:#64748b;margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit;color:#1e293b;background:#fff;outline:none;transition:border .15s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.08)}
+.field textarea{resize:vertical;min-height:72px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.upload-zone{border:1.5px dashed #cbd5e1;border-radius:8px;padding:28px 16px;text-align:center;cursor:pointer;transition:all .15s}
+.upload-zone:hover{border-color:#3b82f6;background:#f0f7ff}
+.upload-zone.has-file{border-color:#059669;background:#f0fdf4}
+.upload-icon{font-size:28px;margin-bottom:8px}
+.upload-text{font-size:13px;color:#64748b}
+.upload-name{font-size:13px;color:#059669;font-weight:500;margin-top:4px}
+.btn-row{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.btn{padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid #e2e8f0;background:#fff;color:#374151;font-family:inherit;transition:all .15s}
+.btn:hover{background:#f8fafc}
+.btn-primary{background:#1e40af;color:#fff;border-color:#1e40af}
+.btn-primary:hover{background:#1d3a9e}
+.btn-primary:disabled{background:#93c5fd;border-color:#93c5fd;cursor:not-allowed}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-pending{background:#fef3c7;color:#92400e}
+.badge-approved{background:#dcfce7;color:#166534}
+.badge-rejected{background:#fee2e2;color:#991b1b}
+.badge-paid{background:#dbeafe;color:#1e40af}
+.inv-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f1f5f9}
+.inv-row:last-child{border:none}
+.inv-icon{width:34px;height:34px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.inv-info{flex:1;min-width:0}
+.inv-num{font-size:13px;font-weight:600;color:#1e293b}
+.inv-sub{font-size:12px;color:#64748b;margin-top:1px}
+.inv-amt{text-align:right;font-size:13px;font-weight:600;color:#1e293b;min-width:80px}
+.timeline{padding-left:20px;position:relative;margin-top:6px}
+.timeline::before{content:'';position:absolute;left:7px;top:6px;bottom:6px;width:1.5px;background:#e2e8f0}
+.tl{position:relative;margin-bottom:14px}
+.tl::before{content:'';position:absolute;left:-16px;top:5px;width:9px;height:9px;border-radius:50%;background:#e2e8f0;border:2px solid #fff;box-shadow:0 0 0 1.5px #cbd5e1}
+.tl.done::before{background:#059669;box-shadow:0 0 0 1.5px #059669}
+.tl.active::before{background:#3b82f6;box-shadow:0 0 0 1.5px #3b82f6}
+.tl-label{font-size:13px;font-weight:600;color:#1e293b}
+.tl-sub{font-size:11px;color:#94a3b8;margin-top:1px}
+.tab-bar{display:flex;gap:2px;border-bottom:1px solid #e2e8f0;margin-bottom:20px}
+.tab{padding:10px 18px;background:none;border:none;border-bottom:2px solid transparent;font-size:13px;font-weight:500;color:#64748b;cursor:pointer;font-family:inherit}
+.tab.active{color:#1e40af;border-bottom-color:#1e40af}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.stat{background:#f8fafc;border-radius:8px;padding:12px;text-align:center}
+.stat-n{font-size:20px;font-weight:700;color:#1e293b}
+.stat-l{font-size:11px;color:#94a3b8;margin-top:2px}
+.alert{background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;margin-bottom:16px}
+.success-screen{text-align:center;padding:40px 20px}
+.success-icon{font-size:52px;margin-bottom:16px}
+.rejected-note{background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;font-size:13px;color:#991b1b;margin-top:12px}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-3px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+var h=React.createElement;
+var useState=React.useState;
+var useEffect=React.useEffect;
+var useRef=React.useRef;
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLd2hrkdB2qgINe_1wPBajRutS_jE1Bq0s40wz4c8UzPoAXVvGykRMvxkEnu9T0jl8HQ/exec';
+
+// ── LOGO (Fast Dolphin — reuse same base64 from AP Dashboard) ───────────────
+var LOGO_B64 = ''; // paste the same LOGO_B64 value from InvoiceManager HTML here
+
+// ── HELPERS ──────────────────────────────────────────────────────────────────
+function getToken() {
+  var params = new URLSearchParams(window.location.search);
+  return params.get('token') || '';
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+}
+
+function fmtAmt(amt, cur) {
+  if (!amt) return '—';
+  return parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + (cur || 'USD');
+}
+
+// ── PORTAL APP ────────────────────────────────────────────────────────────────
+function ConsultantPortal() {
+  var tokenState = useState(getToken());
+  var token = tokenState[0];
+
+  var consultantState = useState(null);
+  var consultant = consultantState[0];
+  var setConsultant = consultantState[1];
+
+  var loadingState = useState(true);
+  var loading = loadingState[0];
+  var setLoading = loadingState[1];
+
+  var errorState = useState('');
+  var error = errorState[0];
+  var setError = errorState[1];
+
+  var tabState = useState('submit');
+  var tab = tabState[0];
+  var setTab = tabState[1];
+
+  useEffect(function() {
+    if (!token) { setError('invalid_token'); setLoading(false); return; }
+    fetch(APPS_SCRIPT_URL + '?action=getConsultant&token=' + encodeURIComponent(token))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) { setError('invalid_token'); }
+        else { setConsultant(d); }
+        setLoading(false);
+      })
+      .catch(function(){ setError('network'); setLoading(false); });
+  }, [token]);
+
+  if (loading) return h('div', {style:{textAlign:'center',padding:'60px 20px',color:'#94a3b8',fontSize:14}}, 'Loading…');
+
+  if (error === 'invalid_token') return h('div', {style:{maxWidth:420,margin:'60px auto',textAlign:'center',padding:'0 16px'}},
+    h('div', {style:{fontSize:48,marginBottom:16}}, '🔒'),
+    h('div', {style:{fontSize:16,fontWeight:700,color:'#1e293b',marginBottom:8}}, 'Invalid or expired link'),
+    h('div', {style:{fontSize:13,color:'#64748b'}}, 'Please contact your Fast Dolphin point of contact to request a new submission link.')
+  );
+
+  if (error === 'network') return h('div', {style:{maxWidth:420,margin:'60px auto',textAlign:'center',padding:'0 16px'}},
+    h('div', {style:{fontSize:48,marginBottom:16}}, '⚠️'),
+    h('div', {style:{fontSize:16,fontWeight:700,color:'#1e293b',marginBottom:8}}, 'Connection error'),
+    h('div', {style:{fontSize:13,color:'#64748b'}}, 'Could not reach the server. Please try again in a moment.')
+  );
+
+  return h('div', {className:'shell'},
+    h(Header, {consultant:consultant}),
+    h('div', {className:'tab-bar'},
+      h('button', {className:'tab'+(tab==='submit'?' active':''), onClick:function(){setTab('submit');}}, 'Submit Invoice'),
+      h('button', {className:'tab'+(tab==='status'?' active':''), onClick:function(){setTab('status');}}, 'My Invoices')
+    ),
+    tab === 'submit'
+      ? h(SubmitForm, {consultant:consultant, token:token})
+      : h(StatusList, {consultant:consultant, token:token})
+  );
+}
+
+function Header(p) {
+  return h('div', {className:'header'},
+    h('div', {className:'logo-wrap'},
+      LOGO_B64
+        ? h('img', {src:'data:image/jpeg;base64,'+LOGO_B64, style:{height:42,objectFit:'contain'}})
+        : h('div', {style:{fontWeight:800,fontSize:18,color:'#1e40af'}}, 'FD'),
+      h('div', {className:'divider'}),
+      h('div', null,
+        h('div', {className:'brand'}, 'Invoice Submission Portal'),
+        h('div', {className:'brand-sub'}, p.consultant ? 'Welcome, ' + p.consultant.name : 'Fast Dolphin')
+      )
+    )
+  );
+}
+
+function SubmitForm(p) {
+  var formState = useState({
+    invoiceNumber:'', invoiceDate:'', amount:'', currency:'USD',
+    description:'', periodFrom:'', periodTo:''
+  });
+  var form = formState[0];
+  var setForm = formState[1];
+
+  var fileState = useState(null);
+  var file = fileState[0];
+  var setFile = fileState[1];
+
+  var submittingState = useState(false);
+  var submitting = submittingState[0];
+  var setSubmitting = submittingState[1];
+
+  var successState = useState(false);
+  var success = successState[0];
+  var setSuccess = successState[1];
+
+  var errState = useState('');
+  var submitErr = errState[0];
+  var setSubmitErr = errState[1];
+
+  var fileRef = useRef(null);
+
+  function setField(k, v) {
+    setForm(function(prev){
+      var next = {};
+      var keys = Object.keys(prev);
+      for (var i=0;i<keys.length;i++) next[keys[i]] = prev[keys[i]];
+      next[k] = v;
+      return next;
+    });
+  }
+
+  function handleFile(e) {
+    var f = e.target.files[0];
+    if (f) setFile(f);
+  }
+
+  function validate() {
+    if (!form.invoiceNumber.trim()) return 'Invoice number is required.';
+    if (!form.invoiceDate) return 'Invoice date is required.';
+    if (!form.amount || isNaN(parseFloat(form.amount))) return 'A valid amount is required.';
+    if (!form.description.trim()) return 'Description of services is required.';
+    if (!file) return 'Please attach your invoice file (PDF or image).';
+    return '';
+  }
+
+  function handleSubmit() {
+    var err = validate();
+    if (err) { setSubmitErr(err); return; }
+    setSubmitErr('');
+    setSubmitting(true);
+
+    // Convert file to base64 for Apps Script storage
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      var b64 = ev.target.result.split(',')[1];
+      var payload = {
+        action: 'submitConsultantInvoice',
+        token: p.token,
+        invoiceNumber: form.invoiceNumber,
+        invoiceDate: form.invoiceDate,
+        amount: form.amount,
+        currency: form.currency,
+        description: form.description,
+        periodFrom: form.periodFrom,
+        periodTo: form.periodTo,
+        fileName: file.name,
+        fileData: b64,
+        fileType: file.type
+      };
+      fetch(APPS_SCRIPT_URL, {method:'POST', body:JSON.stringify(payload)})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          setSubmitting(false);
+          if (d.success) { setSuccess(true); }
+          else { setSubmitErr(d.error || 'Submission failed. Please try again.'); }
+        })
+        .catch(function(){
+          setSubmitting(false);
+          setSubmitErr('Network error. Please try again.');
+        });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  if (success) return h('div', {className:'card'},
+    h('div', {className:'success-screen'},
+      h('div', {className:'success-icon'}, '✅'),
+      h('div', {style:{fontSize:16,fontWeight:700,color:'#1e293b',marginBottom:8}}, 'Invoice submitted successfully'),
+      h('div', {style:{fontSize:13,color:'#64748b',marginBottom:20}},
+        'Your invoice has been sent to the Fast Dolphin team for review. You\'ll be able to track its status in the "My Invoices" tab.'
+      ),
+      h('button', {className:'btn btn-primary', onClick:function(){setSuccess(false);setForm({invoiceNumber:'',invoiceDate:'',amount:'',currency:'USD',description:'',periodFrom:'',periodTo:''});setFile(null);}},
+        'Submit another invoice')
+    )
+  );
+
+  return h('div', null,
+    h('div', {className:'card'},
+      h('div', {className:'card-title'}, 'Invoice details'),
+      h('div', {className:'row2'},
+        h('div', {className:'field'},
+          h('label', null, 'Invoice number *'),
+          h('input', {type:'text', value:form.invoiceNumber, placeholder:'INV-2025-001',
+            onChange:function(e){setField('invoiceNumber',e.target.value);}})
+        ),
+        h('div', {className:'field'},
+          h('label', null, 'Invoice date *'),
+          h('input', {type:'date', value:form.invoiceDate,
+            onChange:function(e){setField('invoiceDate',e.target.value);}})
+        )
+      ),
+      h('div', {className:'row2'},
+        h('div', {className:'field'},
+          h('label', null, 'Amount *'),
+          h('input', {type:'number', value:form.amount, placeholder:'0.00', step:'0.01',
+            onChange:function(e){setField('amount',e.target.value);}})
+        ),
+        h('div', {className:'field'},
+          h('label', null, 'Currency'),
+          h('select', {value:form.currency, onChange:function(e){setField('currency',e.target.value);}},
+            h('option',{value:'USD'},'USD — US Dollar'),
+            h('option',{value:'MXN'},'MXN — Mexican Peso'),
+            h('option',{value:'BRL'},'BRL — Brazilian Real'),
+            h('option',{value:'COP'},'COP — Colombian Peso'),
+            h('option',{value:'CAD'},'CAD — Canadian Dollar'),
+            h('option',{value:'EUR'},'EUR — Euro')
+          )
+        )
+      ),
+      h('div', {className:'row2'},
+        h('div', {className:'field'},
+          h('label', null, 'Service period from'),
+          h('input', {type:'date', value:form.periodFrom,
+            onChange:function(e){setField('periodFrom',e.target.value);}})
+        ),
+        h('div', {className:'field'},
+          h('label', null, 'Service period to'),
+          h('input', {type:'date', value:form.periodTo,
+            onChange:function(e){setField('periodTo',e.target.value);}})
+        )
+      ),
+      h('div', {className:'field'},
+        h('label', null, 'Description of services *'),
+        h('textarea', {value:form.description, placeholder:'E.g. Consulting services — May 2025',
+          onChange:function(e){setField('description',e.target.value);}})
+      )
+    ),
+    h('div', {className:'card'},
+      h('div', {className:'card-title'}, 'Attach invoice file'),
+      h('div', {
+        className:'upload-zone'+(file?' has-file':''),
+        onClick:function(){fileRef.current.click();}
+      },
+        h('div', {className:'upload-icon'}, file ? '📄' : '📎'),
+        h('div', {className:'upload-text'}, file ? 'File attached:' : 'Click to browse or drag & drop'),
+        file && h('div', {className:'upload-name'}, file.name),
+        !file && h('div', {style:{fontSize:11,color:'#94a3b8',marginTop:4}}, 'PDF, JPG, PNG or XML — max 10 MB')
+      ),
+      h('input', {ref:fileRef, type:'file', accept:'.pdf,.jpg,.jpeg,.png,.xml',
+        onChange:handleFile, style:{display:'none'}})
+    ),
+    submitErr && h('div', {className:'alert'}, '⚠️ ' + submitErr),
+    h('div', {className:'btn-row'},
+      h('button', {
+        className:'btn btn-primary',
+        onClick:handleSubmit,
+        disabled:submitting
+      }, submitting ? h('span',null,h('span',{className:'spinner'}),'Submitting…') : 'Submit for approval')
+    )
+  );
+}
+
+function StatusList(p) {
+  var invoicesState = useState([]);
+  var invoices = invoicesState[0];
+  var setInvoices = invoicesState[1];
+
+  var loadingState = useState(true);
+  var loading = loadingState[0];
+  var setLoading = loadingState[1];
+
+  var selectedState = useState(null);
+  var selected = selectedState[0];
+  var setSelected = selectedState[1];
+
+  useEffect(function(){
+    fetch(APPS_SCRIPT_URL + '?action=getConsultantInvoices&token=' + encodeURIComponent(p.token))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ setInvoices(d.invoices || []); setLoading(false); })
+      .catch(function(){ setLoading(false); });
+  }, []);
+
+  if (loading) return h('div', {style:{textAlign:'center',padding:40,color:'#94a3b8',fontSize:13}}, 'Loading invoices…');
+
+  var pending   = invoices.filter(function(i){ return i.status==='Pending'; }).length;
+  var approved  = invoices.filter(function(i){ return i.status==='Approved'; }).length;
+  var paid      = invoices.filter(function(i){ return i.status==='Paid'; }).length;
+  var rejected  = invoices.filter(function(i){ return i.status==='Rejected'; }).length;
+
+  var statusClass = {Pending:'badge-pending',Approved:'badge-approved',Rejected:'badge-rejected',Paid:'badge-paid'};
+
+  var getTimeline = function(inv) {
+    var steps = [
+      {label:'Submitted', sub: inv.submittedOn ? fmtDate(inv.submittedOn) : '—', done:true, active:false},
+      {label:'Under review', sub: inv.status==='Pending' ? 'Waiting on AP team' : '', done: inv.status!=='Pending', active: inv.status==='Pending'},
+      {label:'Approved', sub: inv.reviewedOn && inv.status==='Approved' ? fmtDate(inv.reviewedOn) : (inv.status==='Rejected'?'Rejected — see note below':'—'), done: inv.status==='Approved'||inv.status==='Paid', active: false},
+      {label:'Payment scheduled', sub: inv.status==='Paid' ? 'Paid' : '—', done: inv.status==='Paid', active: false}
+    ];
+    return steps;
+  };
+
+  return h('div', null,
+    h('div', {className:'stats'},
+      h('div', {className:'stat'}, h('div',{className:'stat-n'},invoices.length), h('div',{className:'stat-l'},'Total')),
+      h('div', {className:'stat'}, h('div',{className:'stat-n',style:{color:'#92400e'}},pending), h('div',{className:'stat-l'},'Pending')),
+      h('div', {className:'stat'}, h('div',{className:'stat-n',style:{color:'#166534'}},approved), h('div',{className:'stat-l'},'Approved')),
+      h('div', {className:'stat'}, h('div',{className:'stat-n',style:{color:'#1e40af'}},paid), h('div',{className:'stat-l'},'Paid'))
+    ),
+    invoices.length === 0
+      ? h('div', {className:'card', style:{textAlign:'center',padding:'32px',color:'#94a3b8',fontSize:13}}, 'No invoices submitted yet.')
+      : h('div', {className:'card'},
+          invoices.map(function(inv){
+            return h('div', {key:inv.id},
+              h('div', {
+                className:'inv-row',
+                style:{cursor:'pointer'},
+                onClick:function(){ setSelected(selected && selected.id===inv.id ? null : inv); }
+              },
+                h('div', {className:'inv-icon'}, '🧾'),
+                h('div', {className:'inv-info'},
+                  h('div', {className:'inv-num'}, inv.invoiceNumber || '—'),
+                  h('div', {className:'inv-sub'}, 'Submitted ' + fmtDate(inv.submittedOn) + (inv.description ? ' · ' + inv.description.slice(0,40) : ''))
+                ),
+                h('div', {style:{textAlign:'right'}},
+                  h('div', {className:'inv-amt'}, fmtAmt(inv.amount, inv.currency)),
+                  h('span', {className:'badge ' + (statusClass[inv.status]||'badge-pending')}, inv.status || 'Pending')
+                )
+              ),
+              selected && selected.id === inv.id && h('div', {style:{padding:'14px 4px 10px',borderBottom:'1px solid #f1f5f9'}},
+                h('div', {style:{fontSize:12,fontWeight:600,color:'#64748b',marginBottom:10}}, 'STATUS TIMELINE'),
+                h('div', {className:'timeline'},
+                  getTimeline(inv).map(function(step,i){
+                    return h('div', {key:i, className:'tl'+(step.done?' done':'')+(step.active?' active':'')},
+                      h('div', {className:'tl-label'}, step.label),
+                      h('div', {className:'tl-sub'}, step.sub)
+                    );
+                  })
+                ),
+                inv.status === 'Rejected' && inv.reviewNotes && h('div', {className:'rejected-note'},
+                  '❌ Rejection note: ' + inv.reviewNotes
+                )
+              )
+            );
+          })
+        )
+  );
+}
+
+ReactDOM.render(h(ConsultantPortal), document.getElementById('root'));
+</script>
+</body>
+</html>

@@ -175,178 +175,118 @@ function Header(p) {
 }
 
 function SubmitForm(p) {
-  var formState = useState({
-    invoiceNumber:'', invoiceDate:'', amount:'', currency:'USD',
-    description:'', periodFrom:'', periodTo:''
-  });
-  var form = formState[0];
-  var setForm = formState[1];
+  var blankForm = {invoiceNumber:'', invoiceDate:'', qty:'', unit:'Days', rate:'', currency:'USD', description:'', periodFrom:'', periodTo:''};
+  var formState = useState(blankForm);
+  var form = formState[0]; var setForm = formState[1];
+  var fileState = useState(null); var file = fileState[0]; var setFile = fileState[1];
+  var tsState = useState(null); var tsFile = tsState[0]; var setTsFile = tsState[1];
+  var submittingState = useState(false); var submitting = submittingState[0]; var setSubmitting = submittingState[1];
+  var successState = useState(false); var success = successState[0]; var setSuccess = successState[1];
+  var errState = useState(''); var submitErr = errState[0]; var setSubmitErr = errState[1];
+  var fileRef = useRef(null); var tsRef = useRef(null);
 
-  var fileState = useState(null);
-  var file = fileState[0];
-  var setFile = fileState[1];
+  function setField(k,v){setForm(function(prev){var next={};var keys=Object.keys(prev);for(var i=0;i<keys.length;i++)next[keys[i]]=prev[keys[i]];next[k]=v;return next;});}
 
-  var submittingState = useState(false);
-  var submitting = submittingState[0];
-  var setSubmitting = submittingState[1];
+  var calcAmount=(parseFloat(form.qty)||0)*(parseFloat(form.rate)||0);
 
-  var successState = useState(false);
-  var success = successState[0];
-  var setSuccess = successState[1];
-
-  var errState = useState('');
-  var submitErr = errState[0];
-  var setSubmitErr = errState[1];
-
-  var fileRef = useRef(null);
-
-  function setField(k, v) {
-    setForm(function(prev){
-      var next = {};
-      var keys = Object.keys(prev);
-      for (var i=0;i<keys.length;i++) next[keys[i]] = prev[keys[i]];
-      next[k] = v;
-      return next;
-    });
-  }
-
-  function handleFile(e) {
-    var f = e.target.files[0];
-    if (f) setFile(f);
-  }
-
-  function validate() {
-    if (!form.invoiceNumber.trim()) return 'Invoice number is required.';
-    if (!form.invoiceDate) return 'Invoice date is required.';
-    if (!form.amount || isNaN(parseFloat(form.amount))) return 'A valid amount is required.';
-    if (!form.description.trim()) return 'Description of services is required.';
-    if (!file) return 'Please attach your invoice file (PDF or image).';
+  function validate(){
+    if(!form.invoiceNumber.trim()) return 'Invoice number is required.';
+    if(!form.invoiceDate) return 'Invoice date is required.';
+    if(!form.qty||isNaN(parseFloat(form.qty))) return 'Quantity is required.';
+    if(!form.rate||isNaN(parseFloat(form.rate))) return 'Rate is required.';
+    if(!form.description.trim()) return 'Description of services is required.';
+    if(!file) return 'Please attach your invoice file (PDF or image).';
     return '';
   }
 
-  function handleSubmit() {
-    var err = validate();
-    if (err) { setSubmitErr(err); return; }
-    setSubmitErr('');
-    setSubmitting(true);
+  function readB64(f,cb){var r=new FileReader();r.onload=function(ev){cb(ev.target.result.split(',')[1]);};r.readAsDataURL(f);}
 
-    // Convert file to base64 for Apps Script storage
-    var reader = new FileReader();
-    reader.onload = function(ev) {
-      var b64 = ev.target.result.split(',')[1];
-      var payload = {
-        action: 'submitConsultantInvoice',
-        token: p.token,
-        invoiceNumber: form.invoiceNumber,
-        invoiceDate: form.invoiceDate,
-        amount: form.amount,
-        currency: form.currency,
-        description: form.description,
-        periodFrom: form.periodFrom,
-        periodTo: form.periodTo,
-        fileName: file.name,
-        fileData: b64,
-        fileType: file.type
-      };
-      fetch(APPS_SCRIPT_URL, {method:'POST', body:JSON.stringify(payload)})
-        .then(function(r){ return r.json(); })
-        .then(function(d){
-          setSubmitting(false);
-          if (d.success) { setSuccess(true); }
-          else { setSubmitErr(d.error || 'Submission failed. Please try again.'); }
-        })
-        .catch(function(){
-          setSubmitting(false);
-          setSubmitErr('Network error. Please try again.');
-        });
-    };
-    reader.readAsDataURL(file);
+  function handleSubmit(){
+    var err=validate();if(err){setSubmitErr(err);return;}
+    setSubmitErr('');setSubmitting(true);
+    readB64(file,function(b64){
+      var payload={action:'submitConsultantInvoice',token:p.token,
+        invoiceNumber:form.invoiceNumber,invoiceDate:form.invoiceDate,
+        qty:form.qty,unit:form.unit,rate:form.rate,amount:calcAmount||0,
+        currency:form.currency,description:form.description,
+        periodFrom:form.periodFrom,periodTo:form.periodTo,
+        fileName:file.name,fileData:b64,fileType:file.type};
+      function doSubmit(tsB64){
+        if(tsB64){payload.timesheetFileName=tsFile.name;payload.timesheetFileData=tsB64;payload.timesheetFileType=tsFile.type;}
+        fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)})
+          .then(function(r){return r.json();})
+          .then(function(d){setSubmitting(false);if(d.success){setSuccess(true);}else{setSubmitErr(d.error||'Submission failed. Please try again.');}})
+          .catch(function(){setSubmitting(false);setSubmitErr('Network error. Please try again.');});
+      }
+      if(tsFile){readB64(tsFile,doSubmit);}else{doSubmit(null);}
+    });
   }
 
-  if (success) return h('div', {className:'card'},
-    h('div', {className:'success-screen'},
-      h('div', {className:'success-icon'}, '✅'),
-      h('div', {style:{fontSize:16,fontWeight:700,color:'#1e293b',marginBottom:8}}, 'Invoice submitted successfully'),
-      h('div', {style:{fontSize:13,color:'#64748b',marginBottom:20}},
-        'Your invoice has been sent to the Fast Dolphin team for review. You\'ll be able to track its status in the "My Invoices" tab.'
-      ),
-      h('button', {className:'btn btn-primary', onClick:function(){setSuccess(false);setForm({invoiceNumber:'',invoiceDate:'',amount:'',currency:'USD',description:'',periodFrom:'',periodTo:''});setFile(null);}},
-        'Submit another invoice')
+  if(success) return h('div',{className:'card'},
+    h('div',{className:'success-screen'},
+      h('div',{className:'success-icon'},'✅'),
+      h('div',{style:{fontSize:16,fontWeight:700,color:'#1e293b',marginBottom:8}},'Invoice submitted successfully'),
+      h('div',{style:{fontSize:13,color:'#64748b',marginBottom:20}},'Your invoice has been sent to the Fast Dolphin team for review. You\'ll be able to track its status in the "My Invoices" tab.'),
+      h('button',{className:'btn btn-primary',onClick:function(){setSuccess(false);setForm(blankForm);setFile(null);setTsFile(null);}},'Submit another invoice')
     )
   );
 
-  return h('div', null,
-    h('div', {className:'card'},
-      h('div', {className:'card-title'}, 'Invoice details'),
-      h('div', {className:'row2'},
-        h('div', {className:'field'},
-          h('label', null, 'Invoice number *'),
-          h('input', {type:'text', value:form.invoiceNumber, placeholder:'INV-2025-001',
-            onChange:function(e){setField('invoiceNumber',e.target.value);}})
-        ),
-        h('div', {className:'field'},
-          h('label', null, 'Invoice date *'),
-          h('input', {type:'date', value:form.invoiceDate,
-            onChange:function(e){setField('invoiceDate',e.target.value);}})
-        )
+  return h('div',null,
+    h('div',{className:'card'},
+      h('div',{className:'card-title'},'Invoice details'),
+      h('div',{className:'row2'},
+        h('div',{className:'field'},h('label',null,'Invoice number *'),h('input',{type:'text',value:form.invoiceNumber,placeholder:'INV-2025-001',onChange:function(e){setField('invoiceNumber',e.target.value);}})),
+        h('div',{className:'field'},h('label',null,'Invoice date *'),h('input',{type:'date',value:form.invoiceDate,onChange:function(e){setField('invoiceDate',e.target.value);}}))
       ),
-      h('div', {className:'row2'},
-        h('div', {className:'field'},
-          h('label', null, 'Amount *'),
-          h('input', {type:'number', value:form.amount, placeholder:'0.00', step:'0.01',
-            onChange:function(e){setField('amount',e.target.value);}})
-        ),
-        h('div', {className:'field'},
-          h('label', null, 'Currency'),
-          h('select', {value:form.currency, onChange:function(e){setField('currency',e.target.value);}},
-            h('option',{value:'USD'},'USD — US Dollar'),
-            h('option',{value:'MXN'},'MXN — Mexican Peso'),
-            h('option',{value:'BRL'},'BRL — Brazilian Real'),
-            h('option',{value:'COP'},'COP — Colombian Peso'),
-            h('option',{value:'CAD'},'CAD — Canadian Dollar'),
-            h('option',{value:'EUR'},'EUR — Euro')
-          )
-        )
+      h('div',{className:'row2'},
+        h('div',{className:'field'},h('label',null,'Quantity *'),h('input',{type:'number',value:form.qty,placeholder:'e.g. 10',step:'0.5',onChange:function(e){setField('qty',e.target.value);}})),
+        h('div',{className:'field'},h('label',null,'Unit'),h('select',{value:form.unit,onChange:function(e){setField('unit',e.target.value);}},
+          h('option',{value:'Days'},'Days'),h('option',{value:'Hours'},'Hours'),h('option',{value:'Weeks'},'Weeks'),h('option',{value:'Months'},'Months'),h('option',{value:'Fixed Rate'},'Fixed Rate')
+        ))
       ),
-      h('div', {className:'row2'},
-        h('div', {className:'field'},
-          h('label', null, 'Service period from'),
-          h('input', {type:'date', value:form.periodFrom,
-            onChange:function(e){setField('periodFrom',e.target.value);}})
-        ),
-        h('div', {className:'field'},
-          h('label', null, 'Service period to'),
-          h('input', {type:'date', value:form.periodTo,
-            onChange:function(e){setField('periodTo',e.target.value);}})
-        )
+      h('div',{className:'row2'},
+        h('div',{className:'field'},h('label',null,'Rate *'),h('input',{type:'number',value:form.rate,placeholder:'e.g. 500.00',step:'0.01',onChange:function(e){setField('rate',e.target.value);}})),
+        h('div',{className:'field'},h('label',null,'Currency'),h('select',{value:form.currency,onChange:function(e){setField('currency',e.target.value);}},
+          h('option',{value:'USD'},'USD — US Dollar'),h('option',{value:'MXN'},'MXN — Mexican Peso'),
+          h('option',{value:'BRL'},'BRL — Brazilian Real'),h('option',{value:'COP'},'COP — Colombian Peso'),
+          h('option',{value:'CAD'},'CAD — Canadian Dollar'),h('option',{value:'EUR'},'EUR — Euro')
+        ))
       ),
-      h('div', {className:'field'},
-        h('label', null, 'Description of services *'),
-        h('textarea', {value:form.description, placeholder:'E.g. Consulting services — May 2025',
-          onChange:function(e){setField('description',e.target.value);}})
-      )
+      (form.qty&&form.rate)&&h('div',{style:{background:'#f0f7ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'center',gap:10}},
+        h('span',{style:{fontSize:12,fontWeight:600,color:'#64748b'}},'CALCULATED TOTAL'),
+        h('span',{style:{fontSize:20,fontWeight:700,color:'#1e40af'}},(form.currency||'USD')+' '+calcAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))
+      ),
+      h('div',{className:'row2'},
+        h('div',{className:'field'},h('label',null,'Service period from'),h('input',{type:'date',value:form.periodFrom,onChange:function(e){setField('periodFrom',e.target.value);}})),
+        h('div',{className:'field'},h('label',null,'Service period to'),h('input',{type:'date',value:form.periodTo,onChange:function(e){setField('periodTo',e.target.value);}}))
+      ),
+      h('div',{className:'field'},h('label',null,'Description of services *'),h('textarea',{value:form.description,placeholder:'E.g. Consulting services — May 2025',onChange:function(e){setField('description',e.target.value);}}))
     ),
-    h('div', {className:'card'},
-      h('div', {className:'card-title'}, 'Attach invoice file'),
-      h('div', {
-        className:'upload-zone'+(file?' has-file':''),
-        onClick:function(){fileRef.current.click();}
-      },
-        h('div', {className:'upload-icon'}, file ? '📄' : '📎'),
-        h('div', {className:'upload-text'}, file ? 'File attached:' : 'Click to browse or drag & drop'),
-        file && h('div', {className:'upload-name'}, file.name),
-        !file && h('div', {style:{fontSize:11,color:'#94a3b8',marginTop:4}}, 'PDF, JPG, PNG or XML — max 10 MB')
+    h('div',{className:'card'},
+      h('div',{className:'card-title'},'Attach invoice file *'),
+      h('div',{className:'upload-zone'+(file?' has-file':''),onClick:function(){fileRef.current.click();}},
+        h('div',{className:'upload-icon'},file?'📄':'📎'),
+        h('div',{className:'upload-text'},file?'File attached:':'Click to browse or drag & drop'),
+        file&&h('div',{className:'upload-name'},file.name),
+        !file&&h('div',{style:{fontSize:11,color:'#94a3b8',marginTop:4}},'PDF, JPG, PNG or XML — max 10 MB')
       ),
-      h('input', {ref:fileRef, type:'file', accept:'.pdf,.jpg,.jpeg,.png,.xml',
-        onChange:handleFile, style:{display:'none'}})
+      h('input',{ref:fileRef,type:'file',accept:'.pdf,.jpg,.jpeg,.png,.xml',onChange:function(e){var f=e.target.files[0];if(f)setFile(f);},style:{display:'none'}})
     ),
-    submitErr && h('div', {className:'alert'}, '⚠️ ' + submitErr),
-    h('div', {className:'btn-row'},
-      h('button', {
-        className:'btn btn-primary',
-        onClick:handleSubmit,
-        disabled:submitting
-      }, submitting ? h('span',null,h('span',{className:'spinner'}),'Submitting…') : 'Submit for approval')
+    h('div',{className:'card'},
+      h('div',{className:'card-title'},'Attach approved timesheet (optional)'),
+      h('div',{style:{fontSize:12,color:'#64748b',marginBottom:10}},'Upload the client-approved timesheet to support your invoice.'),
+      h('div',{className:'upload-zone'+(tsFile?' has-file':''),style:{borderColor:tsFile?'#059669':'#cbd5e1'},onClick:function(){tsRef.current.click();}},
+        h('div',{className:'upload-icon'},tsFile?'📋':'🗂️'),
+        h('div',{className:'upload-text'},tsFile?'Timesheet attached:':'Click to browse or drag & drop'),
+        tsFile&&h('div',{className:'upload-name'},tsFile.name),
+        !tsFile&&h('div',{style:{fontSize:11,color:'#94a3b8',marginTop:4}},'PDF, JPG, PNG, Excel — max 10 MB')
+      ),
+      h('input',{ref:tsRef,type:'file',accept:'.pdf,.jpg,.jpeg,.png,.xlsx,.xls',onChange:function(e){var f=e.target.files[0];if(f)setTsFile(f);},style:{display:'none'}})
+    ),
+    submitErr&&h('div',{className:'alert'},'⚠️ '+submitErr),
+    h('div',{className:'btn-row'},
+      h('button',{className:'btn btn-primary',onClick:handleSubmit,disabled:submitting},
+        submitting?h('span',null,h('span',{className:'spinner'}),'Submitting…'):'Submit for approval')
     )
   );
 }
@@ -384,8 +324,8 @@ function StatusList(p) {
     var steps = [
       {label:'Submitted', sub: inv.submittedOn ? fmtDate(inv.submittedOn) : '—', done:true, active:false},
       {label:'Under review', sub: inv.status==='Pending' ? 'Waiting on AP team' : '', done: inv.status!=='Pending', active: inv.status==='Pending'},
-      {label:'Approved', sub: inv.reviewedOn && inv.status==='Approved' ? fmtDate(inv.reviewedOn) : (inv.status==='Rejected'?'Rejected — see note below':'—'), done: inv.status==='Approved'||inv.status==='Paid', active: false},
-      {label:'Payment scheduled', sub: inv.status==='Paid' ? 'Paid' : '—', done: inv.status==='Paid', active: false}
+      {label:'Approved', sub: inv.reviewedOn && (inv.status==='Approved'||inv.status==='Paid') ? fmtDate(inv.reviewedOn) : (inv.status==='Rejected'?'Rejected — see note below':'—'), done: inv.status==='Approved'||inv.status==='Paid', active: false},
+      {label:'Payment scheduled', sub: inv.status==='Paid' ? (inv.paidOn ? fmtDate(inv.paidOn) : 'Paid') : (inv.status==='Approved'?'Pending payment':'—'), done: inv.status==='Paid', active: inv.status==='Approved'}
     ];
     return steps;
   };

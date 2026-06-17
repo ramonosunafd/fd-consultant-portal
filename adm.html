@@ -1,1 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Fast Dolphin — ADM Review</title>
+<script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;min-height:100vh;color:#1e293b}
+.shell{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+.header{display:flex;align-items:center;gap:14px;padding:20px 0 24px}
+.logo-wrap{display:flex;align-items:center;gap:14px}
+.divider{width:1px;height:36px;background:#e2e8f0}
+.brand{font-weight:700;font-size:15px;color:#1e293b;line-height:1.3}
+.brand-sub{font-size:11px;color:#94a3b8;font-weight:500}
+.banner{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;font-size:12px;color:#1e40af;margin-bottom:20px;line-height:1.5}
+.tab-bar{display:flex;gap:2px;border-bottom:1px solid #e2e8f0;margin-bottom:20px}
+.tab{padding:10px 18px;background:none;border:none;border-bottom:2px solid transparent;font-size:13px;font-weight:500;color:#64748b;cursor:pointer;font-family:inherit}
+.tab.active{color:#1e40af;border-bottom-color:#1e40af}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:14px}
+.row-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.c-icon{width:34px;height:34px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.c-name{font-size:13px;font-weight:700;color:#1e293b}
+.c-sub{font-size:12px;color:#64748b;margin-top:1px}
+.c-amt{font-size:13px;font-weight:600;color:#1e293b;text-align:right}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-pending{background:#fef3c7;color:#92400e}
+.badge-approved{background:#dcfce7;color:#166534}
+.badge-rejected{background:#fee2e2;color:#991b1b}
+.badge-paid{background:#dbeafe;color:#1e40af}
+.badge-timesheet{background:#f0f9ff;color:#0369a1}
+.badge-adm-done{background:#ede9fe;color:#5b21b6}
+.links-row{display:flex;gap:14px;margin:8px 0 12px;flex-wrap:wrap}
+.links-row a{color:#3b82f6;font-size:12px;text-decoration:none;font-weight:600}
+textarea.note{width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit;color:#1e293b;background:#fff;outline:none;resize:vertical;min-height:56px;transition:border .15s}
+textarea.note:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.08)}
+.btn-row{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px}
+.btn{padding:8px 18px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #e2e8f0;background:#fff;color:#374151;font-family:inherit;transition:all .15s}
+.btn:hover{background:#f8fafc}
+.btn-primary{background:#1e40af;color:#fff;border-color:#1e40af}
+.btn-primary:hover{background:#1d3a9e}
+.btn-primary:disabled{background:#93c5fd;border-color:#93c5fd;cursor:not-allowed}
+.adm-note-box{background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 12px;font-size:12px;color:#4c1d95;margin-top:4px}
+.adm-note-box .lbl{font-weight:700;font-size:11px;color:#5b21b6;margin-bottom:3px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:40px 20px;color:#94a3b8;font-size:13px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 22px;border-radius:30px;font-size:13px;font-weight:500;z-index:2000;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+var h=React.createElement;
+var useState=React.useState;
+var useEffect=React.useEffect;
 
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLd2hrkdB2qgINe_1wPBajRutS_jE1Bq0s40wz4c8UzPoAXVvGykRMvxkEnu9T0jl8HQ/exec';
+
+// ── LOGO (reuse same base64 from the AP Dashboard / consultant portal) ──────
+var LOGO_B64 = '';
+
+function getToken() {
+  var params = new URLSearchParams(window.location.search);
+  return params.get('token') || '';
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+}
+
+function fmtAmt(amt, cur) {
+  if (!amt) return '—';
+  return parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + (cur || 'USD');
+}
+
+function statusBadge(s) {
+  var map = {Pending:'badge-pending', Approved:'badge-approved', Rejected:'badge-rejected', Paid:'badge-paid', Timesheet:'badge-timesheet'};
+  return h('span',{className:'badge '+(map[s]||'badge-pending')}, s||'Pending');
+}
+
+function Header(p){
+  return h('div',{className:'header'},
+    h('div',{className:'logo-wrap'},
+      LOGO_B64
+        ? h('img',{src:'data:image/jpeg;base64,'+LOGO_B64, style:{height:42,objectFit:'contain'}})
+        : h('div',{style:{fontWeight:800,fontSize:18,color:'#1e40af'}},'FD'),
+      h('div',{className:'divider'}),
+      h('div',null,
+        h('div',{className:'brand'},'ADM Review'),
+        h('div',{className:'brand-sub'}, p.admName ? 'Welcome, '+p.admName : 'Fast Dolphin')
+      )
+    )
+  );
+}
+
+function SubmissionCard(p){
+  var inv = p.inv;
+  var isTS = inv.submissionType === 'timesheet';
+  var noteS = useState(inv.admNote || ''); var note = noteS[0]; var setNote = noteS[1];
+  var savingS = useState(false); var saving = savingS[0]; var setSaving = savingS[1];
+
+  var alreadyDone = !!inv.admStatus;
+  var actionLabel = isTS
+    ? (alreadyDone ? 'Update acknowledgment' : 'Acknowledge receipt')
+    : (alreadyDone ? 'Update soft approval' : 'Soft Approve');
+  var targetStatus = isTS ? 'Acknowledged' : 'Soft Approved';
+
+  function submit(){
+    setSaving(true);
+    p.onReview(inv.rowIndex, targetStatus, note, function(){ setSaving(false); });
+  }
+
+  return h('div',{className:'card'},
+    h('div',{className:'row-top'},
+      h('div',{style:{display:'flex',gap:10}},
+        h('div',{className:'c-icon'}, isTS?'📋':'🧾'),
+        h('div',null,
+          h('div',{className:'c-name'}, inv.consultantName||'—'),
+          h('div',{className:'c-sub'},
+            isTS
+              ? ('Timesheet · '+(inv.periodFrom?fmtDate(inv.periodFrom):'')+' – '+(inv.periodTo?fmtDate(inv.periodTo):''))
+              : ('Invoice '+(inv.invoiceNumber||'—')+' · Submitted '+fmtDate(inv.submittedOn))
+          )
+        )
+      ),
+      h('div',{style:{textAlign:'right'}},
+        !isTS && h('div',{className:'c-amt'}, fmtAmt(inv.amount,inv.currency)),
+        h('div',{style:{marginTop:4}}, statusBadge(inv.status))
+      )
+    ),
+
+    !isTS && inv.description && h('div',{style:{fontSize:12,color:'#64748b',marginBottom:8}}, inv.description),
+
+    (inv.fileUrl || (inv.timesheetUrls&&inv.timesheetUrls.filter(Boolean).length>0)) && h('div',{className:'links-row'},
+      inv.fileUrl && h('a',{href:inv.fileUrl,target:'_blank'},'📎 View invoice'),
+      (inv.timesheetUrls||[]).filter(Boolean).map(function(url,ti){
+        return h('a',{key:ti,href:url,target:'_blank'},'📋 Timesheet'+(inv.timesheetUrls.length>1?' '+(ti+1):''));
+      })
+    ),
+
+    alreadyDone && h('div',{className:'adm-note-box',style:{marginBottom:10}},
+      h('div',{className:'lbl'}, (targetStatus==='Acknowledged'?'✓ Acknowledged':'✓ Soft approved')+(inv.admReviewedOn?' · '+fmtDate(inv.admReviewedOn):'')),
+      inv.admNote && h('div',null, inv.admNote)
+    ),
+
+    h('textarea',{className:'note',placeholder:'Add a note (optional)…',value:note,onChange:function(e){setNote(e.target.value);}}),
+    h('div',{className:'btn-row'},
+      alreadyDone && h('span',{className:'badge badge-adm-done'}, targetStatus==='Acknowledged'?'Acknowledged':'Soft approved'),
+      h('button',{className:'btn btn-primary',disabled:saving,onClick:submit},
+        saving?h('span',null,h('span',{className:'spinner'}),'Saving…'):actionLabel
+      )
+    )
+  );
+}
+
+function AdmPortal(){
+  var token = getToken();
+  var admS = useState(null); var adm = admS[0]; var setAdm = admS[1];
+  var loadingS = useState(true); var loading = loadingS[0]; var setLoading = loadingS[1];
+  var errorS = useState(''); var error = errorS[0]; var setError = errorS[1];
+  var invoicesS = useState([]); var invoices = invoicesS[0]; var setInvoices = invoicesS[1];
+  var qLoadingS = useState(true); var qLoading = qLoadingS[0]; var setQLoading = qLoadingS[1];
+  var tabS = useState('attention'); var tab = tabS[0]; var setTab = tabS[1];
+  var toastS = useState(''); var toast = toastS[0]; var setToast = toastS[1];
+
+  function showToast(msg){ setToast(msg); setTimeout(function(){ setToast(''); }, 2500); }
+
+  function loadQueue(){
+    setQLoading(true);
+    fetch(APPS_SCRIPT_URL + '?action=getAdmQueue&token=' + encodeURIComponent(token) + '&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) { setError('invalid_token'); }
+        else { setInvoices(d.invoices||[]); }
+        setQLoading(false);
+      })
+      .catch(function(){ setQLoading(false); });
+  }
+
+  useEffect(function(){
+    if (!token) { setError('invalid_token'); setLoading(false); return; }
+    fetch(APPS_SCRIPT_URL + '?action=getAdm&token=' + encodeURIComponent(token))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) { setError('invalid_token'); setLoading(false); }
+        else { setAdm(d); setLoading(false); loadQueue(); }
+      })
+      .catch(function(){ setError('network'); setLoading(false); });
+  }, [token]);
+
+  function handleReview(rowIndex, status, note, done){
+    fetch(APPS_SCRIPT_URL, {method:'POST', body:JSON.stringify({
+      action:'admReviewSubmission', token:token, rowIndex:rowIndex, status:status, note:note
+    })})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        done();
+        if (d.success) { showToast(status==='Acknowledged'?'✅ Acknowledgment saved':'✅ Soft approval saved'); loadQueue(); }
+        else { showToast('Error: '+(d.error||'unknown')); }
+      })
+      .catch(function(){ done(); showToast('Network error — please try again'); });
+  }
+
+  if (loading) return h('div',{style:{textAlign:'center',padding:'60px 20px',color:'#94a3b8',fontSize:14}},'Loading…');
+
+  if (error === 'invalid_token') return h('div',{style:{maxWidth:420,margin:'60px auto',textAlign:'center',padding:'0 16px'}},
+    h('div',{style:{fontSize:48,marginBottom:16}},'🔒'),
+    h('div',{style:{fontSize:16,fontWeight:700,color:'#1e293b',marginBottom:8}},'Invalid or expired link'),
+    h('div',{style:{fontSize:13,color:'#64748b'}},'Please contact Fast Dolphin admin for a new review link.')
+  );
+
+  if (error === 'network') return h('div',{style:{maxWidth:420,margin:'60px auto',textAlign:'center',padding:'0 16px'}},
+    h('div',{style:{fontSize:48,marginBottom:16}},'⚠️'),
+    h('div',{style:{fontSize:16,fontWeight:700,color:'#1e293b',marginBottom:8}},'Connection error'),
+    h('div',{style:{fontSize:13,color:'#64748b'}},'Could not reach the server. Please try again in a moment.')
+  );
+
+  var needsAttention = invoices.filter(function(i){ return !i.admStatus; });
+  var displayed = tab==='attention' ? needsAttention : invoices;
+
+  return h('div',{className:'shell'},
+    toast && h('div',{className:'toast'}, toast),
+    h(Header,{admName: adm?adm.name:''}),
+    h('div',{className:'banner'},
+      'These notes and soft approvals are for your records only — they don\u2019t finalize anything. Final approval and payment scheduling still happen in the Fast Dolphin finance dashboard.'
+    ),
+    h('div',{className:'tab-bar'},
+      h('button',{className:'tab'+(tab==='attention'?' active':''),onClick:function(){setTab('attention');}},'Needs attention ('+needsAttention.length+')'),
+      h('button',{className:'tab'+(tab==='all'?' active':''),onClick:function(){setTab('all');}},'All ('+invoices.length+')')
+    ),
+    qLoading
+      ? h('div',{className:'empty'},'Loading submissions…')
+      : displayed.length===0
+        ? h('div',{className:'empty'}, tab==='attention' ? 'Nothing waiting on you right now.' : 'No submissions yet.')
+        : displayed.map(function(inv){
+            return h(SubmissionCard,{key:inv.rowIndex, inv:inv, onReview:handleReview});
+          })
+  );
+}
+
+ReactDOM.render(h(AdmPortal), document.getElementById('root'));
+</script>
+</body>
+</html>

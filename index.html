@@ -438,6 +438,12 @@ function StatusList(p) {
                 })
               ),
               inv.status==='Rejected'&&inv.reviewNotes&&h('div',{className:'rejected-note'},'❌ Rejection note: '+inv.reviewNotes),
+              inv.admStatus&&h('div',{style:{marginTop:10,background:'#f5f3ff',border:'1px solid #ddd6fe',borderRadius:8,padding:'10px 14px'}},
+                h('div',{style:{fontSize:11,fontWeight:700,color:'#5b21b6',marginBottom:4}},
+                  (inv.admStatus==='Acknowledged'?'📋 Acknowledged':'✅ Soft-approved')+' by your account manager'+(inv.admReviewedOn?' · '+fmtDate(inv.admReviewedOn):'')
+                ),
+                inv.admNote&&h('div',{style:{fontSize:12,color:'#4c1d95'}}, inv.admNote)
+              ),
               h('div',{style:{marginTop:10,display:'flex',gap:12,flexWrap:'wrap'}},
                 inv.fileUrl&&h('a',{href:inv.fileUrl,target:'_blank',style:{color:'#3b82f6',fontSize:12,textDecoration:'none',fontWeight:600}},'📎 View Invoice'),
                 inv.timesheetUrls&&inv.timesheetUrls.filter(function(u){return u;}).map(function(url,ti){

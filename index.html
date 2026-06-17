@@ -152,11 +152,14 @@ function ConsultantPortal() {
     h('div', {className:'tab-bar'},
       h('button', {className:'tab'+(tab==='submit'?' active':''), onClick:function(){setTab('submit');}}, 'Submit'
 ),
-      h('button', {className:'tab'+(tab==='status'?' active':''), onClick:function(){setTab('status');}}, 'My Invoices')
+      h('button', {className:'tab'+(tab==='status'?' active':''), onClick:function(){setTab('status');}}, 'My Invoices'),
+      h('button', {className:'tab'+(tab==='info'?' active':''), onClick:function(){setTab('info');}}, 'My Info')
     ),
     tab === 'submit'
       ? h(SubmitForm, {consultant:consultant, token:token})
-      : h(StatusList, {consultant:consultant, token:token})
+      : tab === 'status'
+        ? h(StatusList, {consultant:consultant, token:token})
+        : h(ConsultantInfoTab, {consultant:consultant, token:token})
   );
 }
 
@@ -454,6 +457,326 @@ function StatusList(p) {
           );
         })
       )
+  );
+}
+
+// ── Consultant Info Form (onboarding / banking info) ─────────────────────────
+var INFO_BANK_HINTS = {
+  us: "For US accounts, you'll need your 9-digit ABA routing number.",
+  br: 'Brazilian accounts require agência, account number and CPF/CNPJ.',
+  mx: 'Mexican accounts use an 18-digit CLABE number.',
+  co: 'Provide account number, type and NIT/Cédula for COP transfers.',
+  other: 'Please provide your IBAN (if applicable) and SWIFT/BIC code.'
+};
+var INFO_BANK_HINTS_USD = {
+  br: 'For USD payments, SWIFT/BIC and IBAN are also required.',
+  mx: 'For USD payments, a SWIFT/BIC code is also required.',
+  co: 'For USD payments, a SWIFT/BIC code is also required.'
+};
+var INFO_COUNTRIES = [
+  {code:'us', flag:'🇺🇸', label:'United States'},
+  {code:'br', flag:'🇧🇷', label:'Brazil'},
+  {code:'mx', flag:'🇲🇽', label:'Mexico'},
+  {code:'co', flag:'🇨🇴', label:'Colombia'},
+  {code:'other', flag:'🌐', label:'Other'}
+];
+var INFO_CURRENCIES = {
+  br: [{code:'brl',label:'BRL – Brazilian Real'},{code:'usd',label:'USD – US Dollar'}],
+  mx: [{code:'mxn',label:'MXN – Mexican Peso'},{code:'usd',label:'USD – US Dollar'}],
+  co: [{code:'cop',label:'COP – Colombian Peso'},{code:'usd',label:'USD – US Dollar'}]
+};
+
+function infoDiv(){ return h('hr',{style:{border:'none',borderTop:'1px solid #e2e8f0',margin:'18px 0'}}); }
+
+function InfoField(p){
+  return h('div',{style:{marginBottom:14}},
+    h('label',{style:{display:'block',fontSize:11,fontWeight:600,color:'#64748b',marginBottom:6,letterSpacing:'0.05em',textTransform:'uppercase'}},
+      p.label, p.required&&h('span',{style:{color:'#dc2626',marginLeft:3}},'*')
+    ),
+    p.children,
+    p.hint&&h('p',{style:{fontSize:12,color:'#94a3b8',marginTop:5}}, p.hint)
+  );
+}
+
+function InfoInput(p){
+  var focusS=useState(false); var focused=focusS[0]; var setFocused=focusS[1];
+  return h('input',{
+    type:p.type||'text', placeholder:p.placeholder, value:p.value, onChange:p.onChange,
+    onFocus:function(){setFocused(true);}, onBlur:function(){setFocused(false);},
+    style:{width:'100%',height:42,padding:'0 14px',border:'1px solid '+(focused?'#3b82f6':'#e2e8f0'),borderRadius:8,fontFamily:'inherit',fontSize:14,color:'#1e293b',background:'#fff',outline:'none',boxShadow:focused?'0 0 0 3px rgba(59,130,246,.08)':'none',boxSizing:'border-box'}
+  });
+}
+
+function InfoSelect(p){
+  var focusS=useState(false); var focused=focusS[0]; var setFocused=focusS[1];
+  return h('select',{
+    value:p.value, onChange:p.onChange, onFocus:function(){setFocused(true);}, onBlur:function(){setFocused(false);},
+    style:{width:'100%',height:42,padding:'0 14px',border:'1px solid '+(focused?'#3b82f6':'#e2e8f0'),borderRadius:8,fontFamily:'inherit',fontSize:14,color:'#1e293b',background:'#fff',outline:'none',boxShadow:focused?'0 0 0 3px rgba(59,130,246,.08)':'none',cursor:'pointer',boxSizing:'border-box'}
+  }, p.children);
+}
+
+function InfoCard(p){
+  return h('div',{className:'card'},
+    h('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:16,paddingBottom:14,borderBottom:'1px solid #e2e8f0'}},
+      h('div',{style:{width:34,height:34,borderRadius:8,background:'#eff6ff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}, p.icon),
+      h('div',null,
+        h('div',{style:{fontSize:14,fontWeight:600,color:'#1e293b'}}, p.title),
+        h('div',{style:{fontSize:12,color:'#64748b',marginTop:1}}, p.desc)
+      )
+    ),
+    p.children
+  );
+}
+
+function ConsultantInfoTab(props){
+  var token = props.token;
+  var consultant = props.consultant || {};
+  var nameParts = (consultant.name||'').split(' ');
+  var initF = {
+    firstName: nameParts[0]||'', lastName: nameParts.slice(1).join(' ')||'', email: consultant.email||'', phone:'',
+    street:'', city:'', state:'', postal:'', ecName:'', ecRelation:'', ecPhone:'',
+    beneName:'', bankName:'', usAccount:'', usRouting:'', brAccount:'', brAgencia:'', brCpf:'', brSwift:'', brIban:'',
+    mxClabe:'', mxAccount:'', mxSwift:'', coAccount:'', coType:'', coNit:'', coSwift:'',
+    otherCountry:'', otherCurrency:'', otherBene:'', otherBank:'', otherAccount:'', otherSwift:'', otherBankAddr:''
+  };
+
+  var fS=useState(initF); var f=fS[0]; var setF=fS[1];
+  var countryS=useState(null); var country=countryS[0]; var setCountry=countryS[1];
+  var currencyS=useState(null); var currency=currencyS[0]; var setCurrency=currencyS[1];
+  var toastS=useState(''); var toast=toastS[0]; var setToast=toastS[1];
+  var savingS=useState(false); var saving=savingS[0]; var setSaving=savingS[1];
+  var historyS=useState([]); var history=historyS[0]; var setHistory=historyS[1];
+  var histLoadingS=useState(true); var histLoading=histLoadingS[0]; var setHistLoading=histLoadingS[1];
+  var showHistS=useState(false); var showHist=showHistS[0]; var setShowHist=showHistS[1];
+
+  function upd(k){ return function(e){ setF(function(p){var n={};var keys=Object.keys(p);for(var i=0;i<keys.length;i++)n[keys[i]]=p[keys[i]];n[k]=e.target.value;return n;}); }; }
+  function showToast(msg){ setToast(msg); setTimeout(function(){setToast('');},3500); }
+
+  function loadHistory(){
+    setHistLoading(true);
+    fetch(APPS_SCRIPT_URL+'?action=getConsultantInfoHistory&token='+encodeURIComponent(token)+'&_='+Date.now())
+      .then(function(r){return r.json();})
+      .then(function(d){ setHistory(d.files||[]); setHistLoading(false); })
+      .catch(function(){ setHistLoading(false); });
+  }
+  useEffect(function(){ loadHistory(); }, []);
+
+  function handleCountry(c){
+    setCountry(c);
+    setCurrency(c==='br'?'brl':c==='mx'?'mxn':c==='co'?'cop':null);
+  }
+
+  function clearForm(){
+    setF(initF); setCountry(null); setCurrency(null); showToast('Form cleared.');
+  }
+
+  function saveAndSubmit(){
+    if (!country) { showToast('Please select a country in the banking section.'); return; }
+    setSaving(true);
+
+    function go(){
+      var jsPDF = window.jspdf.jsPDF;
+      var doc = new jsPDF({unit:'pt', format:'a4'});
+      var W = doc.internal.pageSize.getWidth();
+      var m = 50; var y = 50;
+      function hd(t){ doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(100,100,100); doc.text(t.toUpperCase(),m,y); y+=6; doc.setDrawColor(220,218,212); doc.line(m,y,W-m,y); y+=14; }
+      function rw(l,v){ if(!v)return; doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(100,100,100); doc.text(l,m,y); doc.setTextColor(26,25,23); doc.text(String(v),m+160,y); y+=18; }
+
+      doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(30,64,175); doc.text('Fast Dolphin',m,y);
+      doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(100,100,100); doc.text('Consultant Information Form',m+140,y);
+      y+=8; doc.setDrawColor(30,64,175); doc.setLineWidth(1.5); doc.line(m,y,W-m,y); y+=24;
+
+      hd('Contact Information'); rw('First name',f.firstName); rw('Last name',f.lastName); rw('Email',f.email); rw('Phone',f.phone); rw('Street',f.street); rw('City',f.city); rw('State',f.state); rw('Postal code',f.postal); y+=10;
+      hd('Emergency Contact'); rw('Name',f.ecName); rw('Relationship',f.ecRelation); rw('Phone',f.ecPhone); y+=10;
+      hd('Banking Information');
+      var cn={us:'United States',br:'Brazil',mx:'Mexico',co:'Colombia',other:f.otherCountry};
+      rw('Country', cn[country]||country);
+      if(currency) rw('Currency', currency.toUpperCase());
+      if(country!=='other'){ rw('Beneficiary name',f.beneName); rw('Bank name',f.bankName); }
+      if(country==='us'){ rw('Account number',f.usAccount); rw('ABA / Routing',f.usRouting); }
+      else if(country==='br'){ rw('Account number',f.brAccount); rw('Agência',f.brAgencia); rw('CPF / CNPJ',f.brCpf); if(currency==='usd'){ rw('SWIFT / BIC',f.brSwift); rw('IBAN',f.brIban); } }
+      else if(country==='mx'){ rw('CLABE',f.mxClabe); rw('Account number',f.mxAccount); if(currency==='usd') rw('SWIFT / BIC',f.mxSwift); }
+      else if(country==='co'){ rw('Account number',f.coAccount); rw('Account type',f.coType); rw('NIT / Cédula',f.coNit); if(currency==='usd') rw('SWIFT / BIC',f.coSwift); }
+      else if(country==='other'){ rw('Currency',f.otherCurrency); rw('Beneficiary name',f.otherBene); rw('Bank name',f.otherBank); rw('Account / IBAN',f.otherAccount); rw('SWIFT / BIC',f.otherSwift); rw('Bank address',f.otherBankAddr); }
+      y+=20; doc.setFontSize(9); doc.setTextColor(160,160,160);
+      doc.text('Generated on '+new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}),m,y);
+      doc.text('Confidential – Fast Dolphin',W-m,y,{align:'right'});
+
+      var nm=(f.firstName+'-'+f.lastName).toLowerCase().replace(/\s+/g,'-')||'consultant';
+      var fileName = 'fd-consultant-info-'+nm+'.pdf';
+      doc.save(fileName);
+
+      var dataUri = doc.output('datauristring');
+      var base64 = dataUri.split(',')[1];
+      fetch(APPS_SCRIPT_URL,{method:'POST', body:JSON.stringify({
+        action:'submitConsultantInfo', token:token, fileName:fileName, fileData:base64, fileType:'application/pdf'
+      })})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          setSaving(false);
+          if (d.success) { showToast('✅ Saved — a copy was sent to Fast Dolphin.'); loadHistory(); }
+          else { showToast('Saved locally, but sending to Fast Dolphin failed: '+(d.error||'unknown')); }
+        })
+        .catch(function(){ setSaving(false); showToast('Saved locally, but could not reach the server.'); });
+    }
+
+    if (window.jspdf) { go(); }
+    else {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload = go;
+      document.head.appendChild(s);
+    }
+  }
+
+  var isUsd = currency === 'usd';
+  function intlBlock(fields){
+    return h('div',null, infoDiv(),
+      h('p',{style:{fontSize:12,fontWeight:600,color:'#64748b',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:12}},'International transfer (USD)'),
+      fields
+    );
+  }
+
+  var latest = history.length>0 ? history[0] : null;
+
+  return h('div',{style:{paddingBottom:40}},
+    toast && h('div',{style:{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#1e293b',color:'#fff',padding:'10px 22px',borderRadius:30,fontSize:13,fontWeight:500,zIndex:2000,pointerEvents:'none'}}, toast),
+
+    h('div',{style:{marginBottom:16}},
+      h('h2',{style:{fontSize:18,fontWeight:700,color:'#1e293b',marginBottom:4}},'Consultant information'),
+      h('p',{style:{fontSize:13,color:'#64748b'}},'Please fill in all required fields. Your information is kept strictly confidential. You can update this anytime — for example if your bank account changes.')
+    ),
+
+    !histLoading && latest && h('div',{style:{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'11px 16px',marginBottom:16,fontSize:13,color:'#1e40af'}},
+      h('div',null, '✅ Last submitted on '+fmtDate(latest.createdOn)+' — ',
+        h('a',{href:latest.url,target:'_blank',style:{color:'#1e40af',fontWeight:600,textDecoration:'underline'}},'View PDF')
+      ),
+      history.length>1 && h('div',{style:{marginTop:6}},
+        h('a',{href:'#',onClick:function(e){e.preventDefault();setShowHist(!showHist);},style:{fontSize:12,color:'#1e40af',textDecoration:'underline'}},
+          showHist?'Hide previous submissions':'Show previous submissions ('+(history.length-1)+')'
+        ),
+        showHist && h('div',{style:{marginTop:6}},
+          history.slice(1).map(function(item,i){
+            return h('div',{key:i,style:{fontSize:12,marginTop:3}},
+              fmtDate(item.createdOn)+' — ', h('a',{href:item.url,target:'_blank',style:{color:'#1e40af',textDecoration:'underline'}},'View PDF')
+            );
+          })
+        )
+      )
+    ),
+
+    h(InfoCard,{icon:'👤',title:'Contact information',desc:'Your personal and address details'},
+      h('div',{className:'row2'},
+        h(InfoField,{label:'First name',required:true}, h(InfoInput,{placeholder:'Jane', value:f.firstName, onChange:upd('firstName')})),
+        h(InfoField,{label:'Last name',required:true}, h(InfoInput,{placeholder:'Smith', value:f.lastName, onChange:upd('lastName')}))
+      ),
+      h(InfoField,{label:'Email address',required:true}, h(InfoInput,{type:'email', placeholder:'jane@example.com', value:f.email, onChange:upd('email')})),
+      h(InfoField,{label:'Phone number',required:true}, h(InfoInput,{type:'tel', placeholder:'+1 (555) 000-0000', value:f.phone, onChange:upd('phone')})),
+      infoDiv(),
+      h(InfoField,{label:'Street address',required:true}, h(InfoInput,{placeholder:'123 Main St, Apt 4B', value:f.street, onChange:upd('street')})),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}},
+        h(InfoField,{label:'City',required:true}, h(InfoInput,{placeholder:'New York', value:f.city, onChange:upd('city')})),
+        h(InfoField,{label:'State / Province'}, h(InfoInput,{placeholder:'NY', value:f.state, onChange:upd('state')})),
+        h(InfoField,{label:'Postal code',required:true}, h(InfoInput,{placeholder:'10001', value:f.postal, onChange:upd('postal')}))
+      )
+    ),
+
+    h(InfoCard,{icon:'📞',title:'Emergency contact',desc:'Person to contact in case of emergency'},
+      h('div',{className:'row2'},
+        h(InfoField,{label:'Full name',required:true}, h(InfoInput,{placeholder:'John Smith', value:f.ecName, onChange:upd('ecName')})),
+        h(InfoField,{label:'Relationship',required:true}, h(InfoInput,{placeholder:'Spouse, Parent…', value:f.ecRelation, onChange:upd('ecRelation')}))
+      ),
+      h(InfoField,{label:'Phone number',required:true}, h(InfoInput,{type:'tel', placeholder:'+1 (555) 000-0000', value:f.ecPhone, onChange:upd('ecPhone')}))
+    ),
+
+    h(InfoCard,{icon:'🏦',title:'Banking information',desc:'Select your country to see the required fields'},
+      h(InfoField,{label:'Country',required:true},
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginTop:4}},
+          INFO_COUNTRIES.map(function(c){
+            var active = country===c.code;
+            return h('button',{key:c.code, onClick:function(){handleCountry(c.code);}, style:{border:'1px solid '+(active?'#3b82f6':'#e2e8f0'),background:active?'#eff6ff':'#f8fafc',borderRadius:8,padding:'10px 6px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:6,fontSize:12,fontWeight:500,color:active?'#1e40af':'#64748b',lineHeight:1.3,textAlign:'center',fontFamily:'inherit'}},
+              h('span',{style:{fontSize:22}}, c.flag), c.label
+            );
+          })
+        )
+      ),
+
+      country==='other' && h(InfoField,{label:'Country name',required:true}, h(InfoInput,{placeholder:'Enter your country', value:f.otherCountry, onChange:upd('otherCountry')})),
+
+      INFO_CURRENCIES[country] && h('div',null, infoDiv(), h(InfoField,{label:'Currency',required:true},
+        h('div',{style:{display:'flex',gap:10}},
+          INFO_CURRENCIES[country].map(function(cur){
+            var active = currency===cur.code;
+            var col = cur.code==='usd' ? '#1e40af' : '#059669';
+            var bg = cur.code==='usd' ? '#eff6ff' : '#f0fdf4';
+            return h('button',{key:cur.code, onClick:function(){setCurrency(cur.code);}, style:{border:'1px solid '+(active?col:'#e2e8f0'),background:active?bg:'#f8fafc',color:active?col:'#64748b',borderRadius:8,padding:'10px 20px',cursor:'pointer',fontSize:13,fontWeight:600,fontFamily:'inherit'}}, cur.label);
+          })
+        )
+      )),
+
+      country && country!=='other' && h('div',{style:{display:'flex',alignItems:'flex-start',gap:10,background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'11px 14px',margin:'16px 0',fontSize:13,color:'#1e40af'}},
+        h('span',null,'ℹ️'), h('span',null, isUsd&&INFO_BANK_HINTS_USD[country] ? INFO_BANK_HINTS_USD[country] : INFO_BANK_HINTS[country])
+      ),
+
+      country && country!=='other' && h('div',{className:'row2'},
+        h(InfoField,{label:'Beneficiary name',required:true}, h(InfoInput,{placeholder:'As it appears on account', value:f.beneName, onChange:upd('beneName')})),
+        h(InfoField,{label:'Bank name',required:true}, h(InfoInput,{placeholder:'Bank name', value:f.bankName, onChange:upd('bankName')}))
+      ),
+
+      country==='us' && h('div',null,
+        h(InfoField,{label:'Account number',required:true}, h(InfoInput,{placeholder:'e.g. 000123456789', value:f.usAccount, onChange:upd('usAccount')})),
+        h(InfoField,{label:'ABA / Routing number',required:true,hint:'Found at the bottom-left of your check.'}, h(InfoInput,{placeholder:'9 digits', value:f.usRouting, onChange:upd('usRouting')}))
+      ),
+
+      country==='br' && h('div',null,
+        h('div',{className:'row2'},
+          h(InfoField,{label:'Account number',required:true}, h(InfoInput,{placeholder:'e.g. 12345-6', value:f.brAccount, onChange:upd('brAccount')})),
+          h(InfoField,{label:'Agência',required:true,hint:'4-digit branch code.'}, h(InfoInput,{placeholder:'e.g. 0001', value:f.brAgencia, onChange:upd('brAgencia')}))
+        ),
+        h(InfoField,{label:'CPF / CNPJ',required:true}, h(InfoInput,{placeholder:'Tax ID', value:f.brCpf, onChange:upd('brCpf')})),
+        isUsd && intlBlock(h('div',{className:'row2'},
+          h(InfoField,{label:'SWIFT / BIC',required:true}, h(InfoInput,{placeholder:'8 or 11 chars', value:f.brSwift, onChange:upd('brSwift')})),
+          h(InfoField,{label:'IBAN',required:true}, h(InfoInput,{placeholder:'e.g. BR18...', value:f.brIban, onChange:upd('brIban')}))
+        ))
+      ),
+
+      country==='mx' && h('div',null,
+        h(InfoField,{label:'CLABE',required:true,hint:'This replaces the account number for Mexican transfers.'}, h(InfoInput,{placeholder:'18-digit number', value:f.mxClabe, onChange:upd('mxClabe')})),
+        h(InfoField,{label:'Account number',required:true}, h(InfoInput,{placeholder:'e.g. 1234567890', value:f.mxAccount, onChange:upd('mxAccount')})),
+        isUsd && intlBlock(h(InfoField,{label:'SWIFT / BIC',required:true}, h(InfoInput,{placeholder:'8 or 11 chars', value:f.mxSwift, onChange:upd('mxSwift')})))
+      ),
+
+      country==='co' && h('div',null,
+        h(InfoField,{label:'Account number',required:true}, h(InfoInput,{placeholder:'e.g. 69812345678', value:f.coAccount, onChange:upd('coAccount')})),
+        h('div',{className:'row2'},
+          h(InfoField,{label:'Account type',required:true},
+            h(InfoSelect,{value:f.coType, onChange:upd('coType')},
+              h('option',{value:''},'Select…'), h('option',null,'Savings (Ahorros)'), h('option',null,'Checking (Corriente)')
+            )
+          ),
+          h(InfoField,{label:'NIT / Cédula',required:true}, h(InfoInput,{placeholder:'Tax ID', value:f.coNit, onChange:upd('coNit')}))
+        ),
+        isUsd && intlBlock(h(InfoField,{label:'SWIFT / BIC',required:true}, h(InfoInput,{placeholder:'8 or 11 chars', value:f.coSwift, onChange:upd('coSwift')})))
+      ),
+
+      country==='other' && h('div',null,
+        h(InfoField,{label:'Currency',required:true}, h(InfoInput,{placeholder:'e.g. GBP, EUR, AUD', value:f.otherCurrency, onChange:upd('otherCurrency')})),
+        h('div',{className:'row2'},
+          h(InfoField,{label:'Beneficiary name',required:true}, h(InfoInput,{placeholder:'As it appears on account', value:f.otherBene, onChange:upd('otherBene')})),
+          h(InfoField,{label:'Bank name',required:true}, h(InfoInput,{placeholder:'Your bank', value:f.otherBank, onChange:upd('otherBank')}))
+        ),
+        h(InfoField,{label:'Account number / IBAN',required:true}, h(InfoInput,{placeholder:'e.g. GB29NWBK60161331926819', value:f.otherAccount, onChange:upd('otherAccount')})),
+        h(InfoField,{label:'SWIFT / BIC code',required:true}, h(InfoInput,{placeholder:'8 or 11 characters', value:f.otherSwift, onChange:upd('otherSwift')})),
+        h(InfoField,{label:'Bank address'}, h(InfoInput,{placeholder:'Street, city, country', value:f.otherBankAddr, onChange:upd('otherBankAddr')}))
+      )
+    ),
+
+    h('div',{className:'btn-row'},
+      h('button',{className:'btn',onClick:clearForm},'Clear form'),
+      h('button',{className:'btn btn-primary',onClick:saveAndSubmit,disabled:saving},
+        saving?h('span',null,h('span',{className:'spinner'}),'Saving…'):'⬇ Save & Submit'
+      )
+    )
   );
 }
 

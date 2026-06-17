@@ -98,21 +98,24 @@ function Header(p){
   );
 }
 
+function admStatusLabel(status){
+  if (status === 'Acknowledged')   return '✓ Acknowledged';
+  if (status === 'Soft Approved')  return '👍 Soft approved';
+  if (status === 'Soft Rejected')  return '👎 Soft rejected';
+  return '';
+}
+
 function SubmissionCard(p){
   var inv = p.inv;
   var isTS = inv.submissionType === 'timesheet';
   var noteS = useState(inv.admNote || ''); var note = noteS[0]; var setNote = noteS[1];
-  var savingS = useState(false); var saving = savingS[0]; var setSaving = savingS[1];
+  var savingS = useState(''); var saving = savingS[0]; var setSaving = savingS[1]; // '' | 'Soft Approved' | 'Soft Rejected' | 'Acknowledged'
 
   var alreadyDone = !!inv.admStatus;
-  var actionLabel = isTS
-    ? (alreadyDone ? 'Update acknowledgment' : 'Acknowledge receipt')
-    : (alreadyDone ? 'Update soft approval' : 'Soft Approve');
-  var targetStatus = isTS ? 'Acknowledged' : 'Soft Approved';
 
-  function submit(){
-    setSaving(true);
-    p.onReview(inv.rowIndex, targetStatus, note, function(){ setSaving(false); });
+  function submit(targetStatus){
+    setSaving(targetStatus);
+    p.onReview(inv.rowIndex, targetStatus, note, function(){ setSaving(''); });
   }
 
   return h('div',{className:'card'},
@@ -143,17 +146,31 @@ function SubmissionCard(p){
       })
     ),
 
-    alreadyDone && h('div',{className:'adm-note-box',style:{marginBottom:10}},
-      h('div',{className:'lbl'}, (targetStatus==='Acknowledged'?'✓ Acknowledged':'✓ Soft approved')+(inv.admReviewedOn?' · '+fmtDate(inv.admReviewedOn):'')),
-      inv.admNote && h('div',null, inv.admNote)
+    alreadyDone && h('div',{className:'adm-note-box',style:{marginBottom:10,background:inv.admStatus==='Soft Rejected'?'#fef2f2':undefined,border:inv.admStatus==='Soft Rejected'?'1px solid #fecaca':undefined}},
+      h('div',{className:'lbl',style:{color:inv.admStatus==='Soft Rejected'?'#991b1b':undefined}}, admStatusLabel(inv.admStatus)+(inv.admReviewedOn?' · '+fmtDate(inv.admReviewedOn):'')),
+      inv.admNote && h('div',{style:{color:inv.admStatus==='Soft Rejected'?'#991b1b':undefined}}, inv.admNote)
     ),
 
-    h('textarea',{className:'note',placeholder:'Add a note (optional)…',value:note,onChange:function(e){setNote(e.target.value);}}),
+    h('textarea',{className:'note',placeholder:isTS?'Add a note (optional)…':'Add a note (recommended if rejecting)…',value:note,onChange:function(e){setNote(e.target.value);}}),
     h('div',{className:'btn-row'},
-      alreadyDone && h('span',{className:'badge badge-adm-done'}, targetStatus==='Acknowledged'?'Acknowledged':'Soft approved'),
-      h('button',{className:'btn btn-primary',disabled:saving,onClick:submit},
-        saving?h('span',null,h('span',{className:'spinner'}),'Saving…'):actionLabel
-      )
+      isTS
+        ? h('button',{className:'btn btn-primary',disabled:!!saving,onClick:function(){submit('Acknowledged');}},
+            saving==='Acknowledged'?h('span',null,h('span',{className:'spinner'}),'Saving…'):(inv.admStatus==='Acknowledged'?'Update acknowledgment':'Acknowledge receipt')
+          )
+        : h('div',{style:{display:'flex',gap:8}},
+            h('button',{
+              className:'btn',
+              disabled:!!saving,
+              style:inv.admStatus==='Soft Rejected'?{background:'#fef2f2',borderColor:'#fca5a5',color:'#991b1b',fontWeight:600}:{},
+              onClick:function(){submit('Soft Rejected');}
+            }, saving==='Soft Rejected'?h('span',null,h('span',{className:'spinner',style:{borderTopColor:'#991b1b'}}),'Saving…'):(inv.admStatus==='Soft Rejected'?'Update rejection':'Soft Reject')),
+            h('button',{
+              className:'btn btn-primary',
+              disabled:!!saving,
+              style:inv.admStatus==='Soft Approved'?{}:{background:'#fff',color:'#1e40af',borderColor:'#1e40af'},
+              onClick:function(){submit('Soft Approved');}
+            }, saving==='Soft Approved'?h('span',null,h('span',{className:'spinner'}),'Saving…'):(inv.admStatus==='Soft Approved'?'Update approval':'Soft Approve'))
+          )
     )
   );
 }
@@ -200,7 +217,10 @@ function AdmPortal(){
       .then(function(r){ return r.json(); })
       .then(function(d){
         done();
-        if (d.success) { showToast(status==='Acknowledged'?'✅ Acknowledgment saved':'✅ Soft approval saved'); loadQueue(); }
+        if (d.success) {
+          var msg = status==='Acknowledged' ? '✅ Acknowledgment saved' : status==='Soft Rejected' ? '🚩 Soft rejection saved' : '✅ Soft approval saved';
+          showToast(msg); loadQueue();
+        }
         else { showToast('Error: '+(d.error||'unknown')); }
       })
       .catch(function(){ done(); showToast('Network error — please try again'); });
@@ -227,7 +247,7 @@ function AdmPortal(){
     toast && h('div',{className:'toast'}, toast),
     h(Header,{admName: adm?adm.name:''}),
     h('div',{className:'banner'},
-      'These notes and soft approvals are for your records only — they don\u2019t finalize anything. Final approval and payment scheduling still happen in the Fast Dolphin finance dashboard.'
+      'These notes, soft approvals, and soft rejections are for your records only — they don\u2019t finalize anything, and the consultant is never emailed about them. Final approval and payment scheduling still happen in the Fast Dolphin finance dashboard.'
     ),
     h('div',{className:'tab-bar'},
       h('button',{className:'tab'+(tab==='attention'?' active':''),onClick:function(){setTab('attention');}},'Needs attention ('+needsAttention.length+')'),

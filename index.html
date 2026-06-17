@@ -441,11 +441,12 @@ function StatusList(p) {
                 })
               ),
               inv.status==='Rejected'&&inv.reviewNotes&&h('div',{className:'rejected-note'},'❌ Rejection note: '+inv.reviewNotes),
-              inv.admStatus&&h('div',{style:{marginTop:10,background:'#f5f3ff',border:'1px solid #ddd6fe',borderRadius:8,padding:'10px 14px'}},
-                h('div',{style:{fontSize:11,fontWeight:700,color:'#5b21b6',marginBottom:4}},
-                  (inv.admStatus==='Acknowledged'?'📋 Acknowledged':'✅ Soft-approved')+' by your account manager'+(inv.admReviewedOn?' · '+fmtDate(inv.admReviewedOn):'')
+              inv.admStatus&&h('div',{style:{marginTop:10,background:inv.admStatus==='Soft Rejected'?'#fef2f2':'#f5f3ff',border:'1px solid '+(inv.admStatus==='Soft Rejected'?'#fecaca':'#ddd6fe'),borderRadius:8,padding:'10px 14px'}},
+                h('div',{style:{fontSize:11,fontWeight:700,color:inv.admStatus==='Soft Rejected'?'#991b1b':'#5b21b6',marginBottom:4}},
+                  (inv.admStatus==='Acknowledged'?'📋 Acknowledged':inv.admStatus==='Soft Rejected'?'👎 Flagged':'👍 Looks good')+' by your account manager'+(inv.admReviewedOn?' · '+fmtDate(inv.admReviewedOn):'')
                 ),
-                inv.admNote&&h('div',{style:{fontSize:12,color:'#4c1d95'}}, inv.admNote)
+                inv.admNote&&h('div',{style:{fontSize:12,color:inv.admStatus==='Soft Rejected'?'#991b1b':'#4c1d95',marginBottom:4}}, inv.admNote),
+                h('div',{style:{fontSize:11,color:inv.admStatus==='Soft Rejected'?'#b91c1c':'#7c3aed'}},'This is a preliminary note from your account manager — it isn\u2019t the final approval. The status badge above reflects the actual decision.')
               ),
               h('div',{style:{marginTop:10,display:'flex',gap:12,flexWrap:'wrap'}},
                 inv.fileUrl&&h('a',{href:inv.fileUrl,target:'_blank',style:{color:'#3b82f6',fontSize:12,textDecoration:'none',fontWeight:600}},'📎 View Invoice'),

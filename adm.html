@@ -151,7 +151,8 @@ function SubmissionCard(p){
       inv.admNote && h('div',{style:{color:inv.admStatus==='Soft Rejected'?'#991b1b':undefined}}, inv.admNote)
     ),
 
-    h('textarea',{className:'note',placeholder:isTS?'Add a note (optional)…':'Add a note (recommended if rejecting)…',value:note,onChange:function(e){setNote(e.target.value);}}),
+    h('textarea',{className:'note',placeholder:isTS?'Add a note (optional)…':'Add a note (recommended if rejecting)…',value:note,maxLength:400,onChange:function(e){setNote(e.target.value.slice(0,400));}}),
+    h('div',{style:{textAlign:'right',fontSize:11,color:note.length>360?'#dc2626':'#94a3b8',marginTop:2}}, note.length+'/400'),
     h('div',{className:'btn-row'},
       isTS
         ? h('button',{className:'btn btn-primary',disabled:!!saving,onClick:function(){submit('Acknowledged');}},
@@ -182,7 +183,9 @@ function AdmPortal(){
   var errorS = useState(''); var error = errorS[0]; var setError = errorS[1];
   var invoicesS = useState([]); var invoices = invoicesS[0]; var setInvoices = invoicesS[1];
   var qLoadingS = useState(true); var qLoading = qLoadingS[0]; var setQLoading = qLoadingS[1];
-  var tabS = useState('attention'); var tab = tabS[0]; var setTab = tabS[1];
+  var typeTabS = useState('invoice'); var typeTab = typeTabS[0]; var setTypeTab = typeTabS[1];
+  var consultantFilterS = useState('all'); var consultantFilter = consultantFilterS[0]; var setConsultantFilter = consultantFilterS[1];
+  var attentionOnlyS = useState(false); var attentionOnly = attentionOnlyS[0]; var setAttentionOnly = attentionOnlyS[1];
   var toastS = useState(''); var toast = toastS[0]; var setToast = toastS[1];
 
   function showToast(msg){ setToast(msg); setTimeout(function(){ setToast(''); }, 2500); }
@@ -240,8 +243,23 @@ function AdmPortal(){
     h('div',{style:{fontSize:13,color:'#64748b'}},'Could not reach the server. Please try again in a moment.')
   );
 
-  var needsAttention = invoices.filter(function(i){ return !i.admStatus; });
-  var displayed = tab==='attention' ? needsAttention : invoices;
+  var byType = invoices.filter(function(i){ return (i.submissionType||'invoice') === typeTab; });
+  var invoiceCount = invoices.filter(function(i){ return (i.submissionType||'invoice') === 'invoice'; }).length;
+  var timesheetCount = invoices.filter(function(i){ return i.submissionType === 'timesheet'; }).length;
+
+  var consultantNames = [];
+  byType.forEach(function(i){ if (i.consultantName && consultantNames.indexOf(i.consultantName) === -1) consultantNames.push(i.consultantName); });
+  consultantNames.sort();
+
+  var needsAttentionCount = byType.filter(function(i){ return !i.admStatus; }).length;
+
+  var displayed = byType.filter(function(i){
+    if (consultantFilter !== 'all' && i.consultantName !== consultantFilter) return false;
+    if (attentionOnly && i.admStatus) return false;
+    return true;
+  });
+
+  function switchType(t){ setTypeTab(t); setConsultantFilter('all'); }
 
   return h('div',{className:'shell'},
     toast && h('div',{className:'toast'}, toast),
@@ -250,13 +268,29 @@ function AdmPortal(){
       'These notes, soft approvals, and soft rejections are for your records only — they don\u2019t finalize anything, and the consultant is never emailed about them. Final approval and payment scheduling still happen in the Fast Dolphin finance dashboard.'
     ),
     h('div',{className:'tab-bar'},
-      h('button',{className:'tab'+(tab==='attention'?' active':''),onClick:function(){setTab('attention');}},'Needs attention ('+needsAttention.length+')'),
-      h('button',{className:'tab'+(tab==='all'?' active':''),onClick:function(){setTab('all');}},'All ('+invoices.length+')')
+      h('button',{className:'tab'+(typeTab==='invoice'?' active':''),onClick:function(){switchType('invoice');}},'Invoices ('+invoiceCount+')'),
+      h('button',{className:'tab'+(typeTab==='timesheet'?' active':''),onClick:function(){switchType('timesheet');}},'Time Sheets ('+timesheetCount+')')
+    ),
+    h('div',{style:{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap',marginBottom:18,padding:'10px 14px',background:'#fff',border:'1px solid #e2e8f0',borderRadius:10}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+        h('label',{style:{fontSize:12,color:'#64748b',fontWeight:600}},'Consultant'),
+        h('select',{value:consultantFilter, onChange:function(e){setConsultantFilter(e.target.value);}, style:{padding:'6px 10px',borderRadius:7,border:'1px solid #e2e8f0',fontSize:13,fontFamily:'inherit',color:'#1e293b',background:'#fff'}},
+          h('option',{value:'all'},'All consultants ('+byType.length+')'),
+          consultantNames.map(function(n){
+            var c = byType.filter(function(i){return i.consultantName===n;}).length;
+            return h('option',{key:n, value:n}, n+' ('+c+')');
+          })
+        )
+      ),
+      h('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#64748b',cursor:'pointer'}},
+        h('input',{type:'checkbox',checked:attentionOnly,onChange:function(e){setAttentionOnly(e.target.checked);}}),
+        'Needs my attention ('+needsAttentionCount+')'
+      )
     ),
     qLoading
       ? h('div',{className:'empty'},'Loading submissions…')
       : displayed.length===0
-        ? h('div',{className:'empty'}, tab==='attention' ? 'Nothing waiting on you right now.' : 'No submissions yet.')
+        ? h('div',{className:'empty'}, attentionOnly ? 'Nothing waiting on you right now.' : (typeTab==='invoice' ? 'No invoices yet.' : 'No timesheets yet.'))
         : displayed.map(function(inv){
             return h(SubmissionCard,{key:inv.rowIndex, inv:inv, onReview:handleReview});
           })

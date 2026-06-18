@@ -153,13 +153,16 @@ function ConsultantPortal() {
       h('button', {className:'tab'+(tab==='submit'?' active':''), onClick:function(){setTab('submit');}}, 'Submit'
 ),
       h('button', {className:'tab'+(tab==='status'?' active':''), onClick:function(){setTab('status');}}, 'My Invoices'),
+      h('button', {className:'tab'+(tab==='timesheets'?' active':''), onClick:function(){setTab('timesheets');}}, 'My Timesheets'),
       h('button', {className:'tab'+(tab==='info'?' active':''), onClick:function(){setTab('info');}}, 'My Info')
     ),
     tab === 'submit'
       ? h(SubmitForm, {consultant:consultant, token:token})
       : tab === 'status'
-        ? h(StatusList, {consultant:consultant, token:token})
-        : h(ConsultantInfoTab, {consultant:consultant, token:token})
+        ? h(StatusList, {consultant:consultant, token:token, filterType:'invoice'})
+        : tab === 'timesheets'
+          ? h(StatusList, {consultant:consultant, token:token, filterType:'timesheet'})
+          : h(ConsultantInfoTab, {consultant:consultant, token:token})
   );
 }
 
@@ -383,9 +386,14 @@ function StatusList(p) {
 
   if(loading) return h('div',{style:{textAlign:'center',padding:40,color:'#94a3b8',fontSize:13}},'Loading…');
 
-  var pending=invoices.filter(function(i){return i.status==='Pending';}).length;
-  var approved=invoices.filter(function(i){return i.status==='Approved';}).length;
-  var paid=invoices.filter(function(i){return i.status==='Paid';}).length;
+  var filterType = p.filterType || 'invoice';
+  var displayed = invoices.filter(function(i){ return (i.submissionType||'invoice') === filterType; });
+  var isTimesheetTab = filterType === 'timesheet';
+
+  var pending=displayed.filter(function(i){return i.status==='Pending';}).length;
+  var approved=displayed.filter(function(i){return i.status==='Approved';}).length;
+  var paid=displayed.filter(function(i){return i.status==='Paid';}).length;
+  var acknowledged=displayed.filter(function(i){return i.admStatus==='Acknowledged';}).length;
   var statusClass={Pending:'badge-pending',Approved:'badge-approved',Rejected:'badge-rejected',Paid:'badge-paid'};
 
   var getTimeline=function(inv){
@@ -403,16 +411,21 @@ function StatusList(p) {
   };
 
   return h('div',null,
-    h('div',{className:'stats'},
-      h('div',{className:'stat'},h('div',{className:'stat-n'},invoices.length),h('div',{className:'stat-l'},'Total')),
-      h('div',{className:'stat'},h('div',{className:'stat-n',style:{color:'#92400e'}},pending),h('div',{className:'stat-l'},'Pending')),
-      h('div',{className:'stat'},h('div',{className:'stat-n',style:{color:'#166534'}},approved),h('div',{className:'stat-l'},'Approved')),
-      h('div',{className:'stat'},h('div',{className:'stat-n',style:{color:'#1e40af'}},paid),h('div',{className:'stat-l'},'Paid'))
-    ),
-    invoices.length===0
-      ?h('div',{className:'card',style:{textAlign:'center',padding:'32px',color:'#94a3b8',fontSize:13}},'No submissions yet.')
+    isTimesheetTab
+      ? h('div',{className:'stats'},
+          h('div',{className:'stat'},h('div',{className:'stat-n'},displayed.length),h('div',{className:'stat-l'},'Total')),
+          h('div',{className:'stat'},h('div',{className:'stat-n',style:{color:'#5b21b6'}},acknowledged),h('div',{className:'stat-l'},'Acknowledged'))
+        )
+      : h('div',{className:'stats'},
+          h('div',{className:'stat'},h('div',{className:'stat-n'},displayed.length),h('div',{className:'stat-l'},'Total')),
+          h('div',{className:'stat'},h('div',{className:'stat-n',style:{color:'#92400e'}},pending),h('div',{className:'stat-l'},'Pending')),
+          h('div',{className:'stat'},h('div',{className:'stat-n',style:{color:'#166534'}},approved),h('div',{className:'stat-l'},'Approved')),
+          h('div',{className:'stat'},h('div',{className:'stat-n',style:{color:'#1e40af'}},paid),h('div',{className:'stat-l'},'Paid'))
+        ),
+    displayed.length===0
+      ?h('div',{className:'card',style:{textAlign:'center',padding:'32px',color:'#94a3b8',fontSize:13}}, isTimesheetTab?'No timesheets submitted yet.':'No invoices submitted yet.')
       :h('div',{className:'card'},
-        invoices.map(function(inv){
+        displayed.map(function(inv){
           var isTS=inv.submissionType==='timesheet';
           return h('div',{key:inv.id},
             h('div',{className:'inv-row',style:{cursor:'pointer'},onClick:function(){setSelected(selected&&selected.id===inv.id?null:inv);}},
